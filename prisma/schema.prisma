@@ -1,0 +1,248 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../lib/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==================== 用户相关 ====================
+
+// 用户扩展信息（与 Supabase auth.users 的 id 对应）
+model UserProfile {
+  id               String   @id @db.Uuid
+  nickname         String?  @db.VarChar(50)
+  avatarUrl        String?  @map("avatar_url") @db.Text
+  examType         String?  @map("exam_type") @db.VarChar(20)
+  targetSchool     String?  @map("target_school") @db.VarChar(100)
+  targetMajor      String?  @map("target_major") @db.VarChar(100)
+  examDate         DateTime? @map("exam_date") @db.Date
+  dailyStudyHours  Int      @default(4) @map("daily_study_hours")
+  createdAt        DateTime @default(now()) @map("created_at") @db.Timestamptz()
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  subscriptions  Subscription[]
+  answers        AnswerRecord[]
+  wrongQuestions WrongQuestion[]
+  exams          Exam[]
+  studyPlan      StudyPlan?
+  flashcards     Flashcard[]
+  usageLogs      UsageLog[]
+  paymentOrders  PaymentOrder[]
+
+  @@map("user_profiles")
+}
+
+model Subscription {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  plan      String    @default("free") @db.VarChar(20)
+  status    String    @default("active") @db.VarChar(20)
+  startedAt DateTime  @default(now()) @map("started_at") @db.Timestamptz()
+  expiresAt DateTime? @map("expires_at") @db.Timestamptz()
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user UserProfile @relation(fields: [userId], references: [id])
+
+  @@map("subscriptions")
+}
+
+// ==================== 题库 ====================
+
+model Question {
+  id              String   @id @default(uuid()) @db.Uuid
+  userId          String?  @map("user_id") @db.Uuid
+  examType        String   @map("exam_type") @db.VarChar(20)
+  subject         String   @db.VarChar(50)
+  chapter         String?  @db.VarChar(100)
+  type            String   @db.VarChar(20)
+  difficulty      String   @db.VarChar(10)
+  content         Json     @db.JsonB
+  knowledgePoints String[] @map("knowledge_points") @db.Text
+  isPublic        Boolean  @default(false) @map("is_public")
+  usageCount      Int      @default(0) @map("usage_count")
+  createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  answerRecords AnswerRecord[]
+  examAnswers   ExamAnswer[]
+
+  @@index([examType, subject, chapter])
+  @@index([userId])
+  @@index([isPublic])
+  @@map("questions")
+}
+
+// ==================== 批改 ====================
+
+model AnswerRecord {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  questionId String   @map("question_id") @db.Uuid
+  userAnswer String   @map("user_answer") @db.Text
+  score      Decimal? @db.Decimal(5, 2)
+  feedback   Json?    @db.JsonB
+  isCorrect  Boolean? @map("is_correct")
+  timeSpent  Int?     @map("time_spent")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user          UserProfile    @relation(fields: [userId], references: [id])
+  question      Question       @relation(fields: [questionId], references: [id])
+  wrongQuestion WrongQuestion?
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@map("answer_records")
+}
+
+// 错题本
+model WrongQuestion {
+  id             String    @id @default(uuid()) @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  answerRecordId String    @map("answer_record_id") @db.Uuid
+  reviewCount    Int       @default(0) @map("review_count")
+  mastered       Boolean   @default(false)
+  nextReviewAt   DateTime? @map("next_review_at") @db.Timestamptz()
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user         UserProfile  @relation(fields: [userId], references: [id])
+  answerRecord AnswerRecord @relation(fields: [answerRecordId], references: [id])
+
+  @@unique([answerRecordId])
+  @@index([userId, nextReviewAt])
+  @@map("wrong_questions")
+}
+
+// ==================== 模考 ====================
+
+model Exam {
+  id              String    @id @default(uuid()) @db.Uuid
+  userId          String    @map("user_id") @db.Uuid
+  examType        String    @map("exam_type") @db.VarChar(20)
+  subjectScope    String    @map("subject_scope") @db.VarChar(50)
+  totalQuestions  Int       @map("total_questions")
+  durationMinutes Int       @map("duration_minutes")
+  status          String    @default("in_progress") @db.VarChar(20)
+  startedAt       DateTime? @map("started_at") @db.Timestamptz()
+  submittedAt     DateTime? @map("submitted_at") @db.Timestamptz()
+  totalScore      Decimal?  @map("total_score") @db.Decimal(5, 2)
+  report          Json?     @db.JsonB
+  createdAt       DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user        UserProfile  @relation(fields: [userId], references: [id])
+  examAnswers ExamAnswer[]
+
+  @@map("exams")
+}
+
+model ExamAnswer {
+  id             String  @id @default(uuid()) @db.Uuid
+  examId         String  @map("exam_id") @db.Uuid
+  questionId     String  @map("question_id") @db.Uuid
+  userAnswer     String? @map("user_answer") @db.Text
+  isCorrect      Boolean? @map("is_correct")
+  score          Decimal? @db.Decimal(5, 2)
+  questionOrder  Int     @map("question_order")
+
+  exam     Exam     @relation(fields: [examId], references: [id])
+  question Question @relation(fields: [questionId], references: [id])
+
+  @@map("exam_answers")
+}
+
+// ==================== 复习计划 ====================
+
+model StudyPlan {
+  id          String   @id @default(uuid()) @db.Uuid
+  userId      String   @map("user_id") @db.Uuid
+  planData    Json     @map("plan_data") @db.JsonB
+  generatedAt DateTime @default(now()) @map("generated_at") @db.Timestamptz()
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz()
+
+  user  UserProfile @relation(fields: [userId], references: [id])
+  tasks StudyTask[]
+
+  @@unique([userId])
+  @@map("study_plans")
+}
+
+model StudyTask {
+  id               String    @id @default(uuid()) @db.Uuid
+  planId           String    @map("plan_id") @db.Uuid
+  date             DateTime  @db.Date
+  subject          String?   @db.VarChar(50)
+  taskDescription  String?   @map("task_description") @db.Text
+  estimatedMinutes Int?      @map("estimated_minutes")
+  completed        Boolean   @default(false)
+  completedAt      DateTime? @map("completed_at") @db.Timestamptz()
+
+  plan StudyPlan @relation(fields: [planId], references: [id])
+
+  @@map("study_tasks")
+}
+
+// ==================== 闪卡 ====================
+
+model Flashcard {
+  id           String   @id @default(uuid()) @db.Uuid
+  userId       String   @map("user_id") @db.Uuid
+  deckName     String?  @map("deck_name") @db.VarChar(100)
+  frontContent String   @map("front_content") @db.Text
+  backContent  String   @map("back_content") @db.Text
+  reviewCount  Int      @default(0) @map("review_count")
+  easeFactor   Decimal  @default(2.5) @map("ease_factor") @db.Decimal(3, 1)
+  intervalDays Int      @default(0) @map("interval_days")
+  nextReviewAt DateTime @default(now()) @map("next_review_at") @db.Timestamptz()
+  createdAt    DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user UserProfile @relation(fields: [userId], references: [id])
+
+  @@map("flashcards")
+}
+
+// ==================== 统计 & 支付 ====================
+
+model UsageLog {
+  id         String   @id @default(uuid()) @db.Uuid
+  userId     String   @map("user_id") @db.Uuid
+  action     String   @db.VarChar(50)
+  tokensUsed Int      @default(0) @map("tokens_used")
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz()
+
+  user UserProfile @relation(fields: [userId], references: [id])
+
+  @@index([userId, action, createdAt])
+  @@map("usage_logs")
+}
+
+model PaymentOrder {
+  id                 String    @id @default(uuid()) @db.Uuid
+  userId             String    @map("user_id") @db.Uuid
+  plan               String    @db.VarChar(20)
+  amountCents        Int       @map("amount_cents")
+  paymentMethod      String?   @map("payment_method") @db.VarChar(20)
+  status             String    @default("pending") @db.VarChar(20)
+  thirdPartyTradeNo  String?   @map("third_party_trade_no") @db.VarChar(100)
+  paidAt             DateTime? @map("paid_at") @db.Timestamptz()
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  user UserProfile @relation(fields: [userId], references: [id])
+
+  @@map("payment_orders")
+}
+
+// ==================== 客服 ====================
+
+model SupportMessage {
+  id        String    @id @default(uuid()) @db.Uuid
+  userId    String    @map("user_id") @db.Uuid
+  userEmail String    @map("user_email") @db.Text
+  message   String    @db.Text
+  sender    String    @default("user") @db.VarChar(10) // user | admin
+  isRead    Boolean   @default(false) @map("is_read")
+  status    String    @default("open") @db.VarChar(20)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz()
+
+  @@index([userId, createdAt(sort: Desc)])
+  @@index([status])
+  @@map("support_messages")
+}
