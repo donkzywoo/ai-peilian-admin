@@ -11,10 +11,7 @@ export async function middleware(request: NextRequest) {
     console.log("[middleware] x-api-secret:", secret ? `${secret.substring(0, 8)}...` : "(无)");
 
     const expectedSecret = process.env.API_SECRET || "dev-secret";
-    const secretMatch = secret === expectedSecret;
-    console.log("[middleware] secret 匹配:", secretMatch);
-
-    if (secretMatch) {
+    if (secret === expectedSecret) {
       console.log("[middleware] ✅ 代理请求放行");
       return NextResponse.next();
     }
@@ -25,18 +22,41 @@ export async function middleware(request: NextRequest) {
     console.log("[middleware] 是否后台管理接口:", isAllowedAdminApi);
 
     if (isAllowedAdminApi) {
+      // 用 supabaseResponse 来正确传递 cookies
+      let supabaseResponse = NextResponse.next({ request });
+
       const supabase = createServerClient(
         process.env.NEXT_PUBLIC_SUPABASE_URL!,
         process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
         {
           cookies: {
-            getAll() { return request.cookies.getAll(); },
-            setAll() {},
+            getAll() {
+              return request.cookies.getAll();
+            },
+            setAll(cookiesToSet) {
+              cookiesToSet.forEach(({ name, value }) =>
+                request.cookies.set(name, value)
+              );
+              supabaseResponse = NextResponse.next({ request });
+              cookiesToSet.forEach(({ name, value, options }) =>
+                supabaseResponse.cookies.set(name, value, options)
+              );
+            },
           },
         }
       );
-      const { data: { user } } = await supabase.auth.getUser();
+
+      // 先尝试 getSession（更可靠），再兜底 getUser
+      const { data: sessionData } = await supabase.auth.getSession();
+      const user = sessionData.session?.user;
+
+      if (!user) {
+        const { data: userData } = await supabase.auth.getUser();
+        console.log("[middleware] getUser 兜底结果:", userData.user ? { id: userData.user.id, email: userData.user.email } : "(无)");
+      }
+
       console.log("[middleware] Supabase 用户:", user ? { id: user.id, email: user.email } : "(未登录)");
+      console.log("[middleware] Cookies 数量:", request.cookies.getAll().length);
 
       if (user?.email) {
         const rawAdmins = process.env.ADMIN_EMAILS || "";
@@ -51,7 +71,7 @@ export async function middleware(request: NextRequest) {
 
         if (isInWhitelist) {
           console.log("[middleware] ✅ 管理员身份放行");
-          return NextResponse.next();
+          return supabaseResponse;
         }
         console.log("[middleware] ❌ 邮箱不在白名单");
       } else {
