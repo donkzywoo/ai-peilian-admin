@@ -1,9 +1,16 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { checkAdminAuth } from "@/lib/admin-auth";
 
-export async function GET() {
+export async function GET(req: NextRequest) {
+  if (req.headers.get("x-api-secret") !== (process.env.API_SECRET || "dev-secret")) {
+    const isAdmin = await checkAdminAuth(await cookies());
+    if (!isAdmin) return NextResponse.json({ error: "未授权" }, { status: 401 });
+  }
+
   const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
   const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  if (!key || !url) return NextResponse.json({ error: "未配置 service_role key" }, { status: 500 });
+  if (!key || !url) return NextResponse.json({ error: "未配置" }, { status: 500 });
 
   const res = await fetch(`${url}/auth/v1/admin/users?per_page=100`, {
     headers: { Authorization: `Bearer ${key}`, apikey: key },

@@ -1,9 +1,15 @@
 import { NextRequest, NextResponse } from "next/server";
+import { cookies } from "next/headers";
+import { checkAdminAuth } from "@/lib/admin-auth";
 
 const KEY = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 
 export async function GET(req: NextRequest) {
+  if (req.headers.get("x-api-secret") !== (process.env.API_SECRET || "dev-secret")) {
+    const isAdmin = await checkAdminAuth(await cookies());
+    if (!isAdmin) return NextResponse.json({ error: "未授权" }, { status: 401 });
+  }
   const { searchParams } = new URL(req.url);
   const status = searchParams.get("status");
   let query = SUPABASE_URL + "/rest/v1/support_messages?select=*&order=created_at.desc&limit=50";
@@ -17,6 +23,10 @@ export async function GET(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
+  if (req.headers.get("x-api-secret") !== (process.env.API_SECRET || "dev-secret")) {
+    const isAdmin = await checkAdminAuth(await cookies());
+    if (!isAdmin) return NextResponse.json({ error: "未授权" }, { status: 401 });
+  }
   try {
     const { id, reply, status } = await req.json();
     const body: Record<string, unknown> = { status: status || "replied" };
