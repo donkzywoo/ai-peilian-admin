@@ -3,6 +3,9 @@ import { cookies } from "next/headers";
 import { checkAdminAuth } from "@/lib/admin-auth";
 
 export async function GET(req: NextRequest) {
+  console.log("[api/users] 进入了 route handler");
+  console.log("[api/users] API_SECRET 是否配置:", !!process.env.API_SECRET);
+  console.log("[api/users] x-api-secret 请求头:", req.headers.get("x-api-secret") || "(无)");
   if (req.headers.get("x-api-secret") !== (process.env.API_SECRET || "dev-secret")) {
     const isAdmin = await checkAdminAuth(await cookies());
     if (!isAdmin) return NextResponse.json({ error: "未授权" }, { status: 401 });

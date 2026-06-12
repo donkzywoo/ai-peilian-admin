@@ -4,6 +4,7 @@ import { cookies } from "next/headers";
 import { checkAdminAuth } from "@/lib/admin-auth";
 
 export async function GET(req: NextRequest) {
+  console.log("[api/stats] 进入了 route handler");
   // Also accept x-api-secret (from user app proxy)
   if (req.headers.get("x-api-secret") !== (process.env.API_SECRET || "dev-secret")) {
     const isAdmin = await checkAdminAuth(await cookies());
